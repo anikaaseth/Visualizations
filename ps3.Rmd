@@ -1,0 +1,191 @@
+---
+title: "Problem Set 3"
+author: "Anika Arora Seth"
+date: "2025-02-04"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(esquisse)
+library(sf)
+library(tidyverse)
+library(pubtheme)
+```
+
+## Visualizing NBA Schedule
+
+```{r}
+d = readRDS('data/games.rds')
+d = d %>%
+  filter(lg=='nba',
+         season %in% 2022,
+         season.type=='reg') %>%
+  select(date, away, home, ascore, hscore, season, gid)
+head(d)
+
+dg = d %>%
+  group_by(away, home) %>%
+  summarise(games = n()) %>%
+  ungroup() %>%
+  complete(away, home, fill=list(games=0)) ## new function!
+head(dg)
+```
+## 1. Visualize schedule with a grid plot
+
+```{r fig.width=9, fig.height=9}
+p1 = ggplot(dg %>% filter(games > 0), aes(x = home, 
+               y = away, 
+               fill = as.character(games))) + 
+  geom_tile(color = 'black') +
+  labs(title = "NBA 2022 Season: Team Matchups",
+       x = "Home Team",
+       y = "Away Team",
+       fill = "Games Played") +
+  theme_pub() +
+  theme(axis.text.x = element_text(angle = 90, 
+                                   vjust = 0.3, 
+                                   hjust = 1),
+  plot.margin = margin(40, 40, 40, 40)) +
+  coord_fixed(ratio = 1)
+
+p1
+```
+
+## 2. Order teams by division
+
+```{r fig.width=9, fig.height=9}
+tms = read.csv('data/nba.teams.csv')
+
+## capitalize the first letter of each conf and div
+## create a factor to specify the order we want for divisions 
+tms = tms %>%
+  arrange(conf, div) %>%
+  mutate(conf = paste0(toupper(substr(conf, 1, 1)), substr(conf, 2, nchar(conf))),
+         div  = paste0(toupper(substr(div , 1, 1)), substr(div , 2, nchar( div))),
+         div  = factor(div, levels = unique(div)))
+head(tms)
+
+## your code here
+
+## reorder teams based on conference/division
+tms = tms %>%
+  mutate(team = factor(team, levels = team)) 
+
+# apply new order to the matchup dataset
+dg = dg %>%
+  mutate(
+    home = factor(home, levels = tms$team),
+    away = factor(away, levels = tms$team)
+  )
+
+# updated grid plot
+p2 = ggplot(dg %>% filter(games > 0), aes(x = home, y = away, fill = as.character(games))) + 
+  geom_tile(color = 'black') +
+  labs(
+    title = "NBA 2022 Season: Team Matchups (Ordered by Division)",
+    x = "Home Team",
+    y = "Away Team",
+    fill = "Games Played"
+  ) +
+  theme_pub() +
+  theme(axis.text.x = element_text(angle = 90, 
+                                   vjust = 0.3, 
+                                   hjust = 1),
+  plot.margin = margin(40, 40, 40, 40)) +
+  coord_fixed(ratio = 1)
+
+p2
+
+```
+
+## 3. Creating separation between the divisions
+```{r fig.width=9, fig.height=9}
+# Merge team division information into `dg`
+dg_div = dg %>%
+  left_join(tms %>% select(team, div), by = c("home" = "team")) %>%
+  rename(home_div = div) %>%
+  left_join(tms %>% select(team, div), by = c("away" = "team")) %>%
+  rename(away_div = div)
+
+# Create the updated grid plot with facet_grid
+p3 = ggplot(dg_div %>% filter(games > 0), aes(x = home, y = away, fill = as.character(games))) + 
+  geom_tile(color = 'black') +
+  facet_grid(rows = vars(home_div), scales = "free", space = "free") +  # Separate by division
+  labs(
+    title = "NBA 2022 Season: Team Matchups by Division",
+    x = "Home Team",
+    y = "Away Team",
+    fill = "Games Played"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.3, hjust = 1),  # Rotate X labels
+    axis.text.y = element_text(size = 10, hjust = 1),  # Increase Y label size
+    strip.text.y = element_text(size = 14, face = "bold"),  # Make division labels clearer
+    plot.margin = margin(40, 40, 40, 40)  # Add space around plot
+  )
+
+# Display the new plot
+p3
+```
+
+## 3b. Display as six separate plots with clear labels
+I want to make the plot from above more legibile and specific by making separate subplots, as below
+```{r fig.width=9, fig.height=9}
+dg_div = dg %>%
+  left_join(tms %>% select(team, div), by = c("home" = "team")) %>%
+  rename(home_div = div) %>%
+  left_join(tms %>% select(team, div), by = c("away" = "team")) %>%
+  rename(away_div = div)
+
+divisions = unique(dg_div$home_div)
+
+# create plots for each division
+plot_list = list()
+
+for (div in divisions) {
+  p = ggplot(dg_div %>% filter(home_div == div & games > 0), 
+             aes(x = home, y = away, fill = as.character(games))) + 
+    geom_tile(color = 'black') +
+    facet_grid(rows = vars(home_div)) +  
+    labs(
+      title = paste(div, "Division, 2022"),
+      x = "Home Team",
+      y = "Away Team",
+      fill = "Games Played"
+    ) +
+    theme_pub() +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1),  
+      axis.text.y = element_text(size = 10, hjust = 1), 
+      strip.text.y = element_text(size = 14, face = "bold"), 
+    )
+  
+  # save each plot in a list
+  plot_list[[div]] = p
+}
+
+# display all
+plot_list
+```
+
+```{r fig.width=15, fig.height=15}
+library(patchwork)
+final_plot = (plot_list[[1]] | plot_list[[2]] | plot_list[[3]]) /
+             (plot_list[[4]] | plot_list[[5]] | plot_list[[6]]) +
+            plot_annotation(title = "NBA 2022 Season: Team Matchups by Division")
+final_plot
+```
+
+## 4. Create a new repo
+See photo below.
+```{r}
+ggsave("nba_division_matchups.png", final_plot, width = 14, height = 10, dpi = 300)
+```
